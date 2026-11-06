@@ -1,0 +1,23 @@
+name: Compilar Black Magic (Windows VST3)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Compilar
+        run: cmake --build build --config Release --target BlackMagic_VST3 --parallel
+
+      - name: Subir el VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlackMagic-VST3-Windows
+          path: "build/BlackMagic_artefacts/Release/VST3/Black Magic.vst3"
