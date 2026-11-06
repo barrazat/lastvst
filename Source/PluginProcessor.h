@@ -1,31 +1,25 @@
 #pragma once
-#include <juce_audio_processors/juce_audio_processors.h>
-#include "DSP/AutoTuneEngine.h"
 
-class BlackMagicAudioProcessor : public juce::AudioProcessor,
-                                 private juce::AsyncUpdater,
-                                 private juce::AudioProcessorValueTreeState::Listener
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <atomic>
+#include "PitchEngine.h"
+
+class BlackMagicAudioProcessor : public juce::AudioProcessor
 {
 public:
     BlackMagicAudioProcessor();
-    ~BlackMagicAudioProcessor() override
-    {
-        apvts.removeParameterListener ("LOW_LATENCY", this);
-        apvts.removeParameterListener ("INPUT_TYPE", this);
-        cancelPendingUpdate();
-    }
+    ~BlackMagicAudioProcessor() override = default;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
-    using AudioProcessor::processBlock;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Black Magic"; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override  { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
@@ -41,22 +35,21 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
-    // Para la pantalla LCD de la interfaz (midi -1 = sin voz; nivel 0..1)
-    std::atomic<float> uiDetectedMidi { -1.0f }, uiTargetMidi { -1.0f }, uiInputLevel { 0.0f };
-    std::atomic<double> uiSampleRate { 44100.0 };
+    // Nota de salida actual (MIDI) o -1 si no hay voz. La lee la interfaz (LCD).
+    std::atomic<int> displayTarget { -1 };
 
 private:
-    void handleAsyncUpdate() override;
-    void parameterChanged (const juce::String& parameterID, float newValue) override;   // recalcula la latencia al instante      // informa al host del cambio de latencia (hilo de mensajes)
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
-    std::atomic<float> *pRetune = nullptr, *pHumanize = nullptr, *pThroat = nullptr, *pTracking = nullptr,
-                       *pInputType = nullptr, *pKey = nullptr, *pScale = nullptr, *pMix = nullptr,
-                       *pThroatOn = nullptr, *pLowLatency = nullptr;
-    std::atomic<int> pendingLatency { 0 };
-    int reportedLatency = -1;
+    bm::PitchEngine engine;
 
-    blackmagic::AutoTuneEngine engine;
+    std::atomic<float>* retuneP    = nullptr;
+    std::atomic<float>* keyP       = nullptr;
+    std::atomic<float>* scaleP     = nullptr;
+    std::atomic<float>* inputTypeP = nullptr;
+    std::atomic<float>* throatP    = nullptr;
+    std::atomic<float>* trackingP  = nullptr;
+    std::atomic<float>* humanizeP  = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BlackMagicAudioProcessor)
 };

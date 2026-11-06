@@ -1,0 +1,8 @@
+FUENTES OPCIONALES (no las puedo incluir por licencia)
+
+ - title_font.ttf : pon aqui UnifrakturCook (el titulo "Black Magic").
+ - ui_font.ttf    : pon aqui Helvetica Neue Display Bold (si tienes la licencia).
+                    Si tu archivo es .otf, renombralo a ui_font.ttf; se carga igual.
+
+Si no existen, el plugin usa una fuente gotica / Helvetica Neue / Arial del sistema.
+Al subir el proyecto a GitHub, el workflow las incrusta solo si estan en esta carpeta.
