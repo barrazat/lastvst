@@ -29,21 +29,16 @@ target_sources(BlackMagic PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp)
 
-# ---- Fuentes opcionales (si existen en Resources/ se incrustan en el plugin) ----
-set(BM_ASSETS "")
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/title_font.ttf")
-    list(APPEND BM_ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/title_font.ttf")
-    target_compile_definitions(BlackMagic PRIVATE BM_HAS_TITLE_FONT=1)
-endif()
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/ui_font.ttf")
-    list(APPEND BM_ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/ui_font.ttf")
-    target_compile_definitions(BlackMagic PRIVATE BM_HAS_UI_FONT=1)
-endif()
-if(BM_ASSETS)
-    juce_add_binary_data(BlackMagicAssets SOURCES ${BM_ASSETS})
-    set_target_properties(BlackMagicAssets PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
-    target_link_libraries(BlackMagic PRIVATE BlackMagicAssets)
-endif()
+# ---- Recursos incrustados: logo + cualquier fuente .otf/.ttf que pongas en Resources/ ----
+file(GLOB BM_FONT_FILES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/Resources/*.otf"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Resources/*.ttf")
+
+juce_add_binary_data(BlackMagicAssets SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/Resources/dungeon_logo.png"
+    ${BM_FONT_FILES})
+set_target_properties(BlackMagicAssets PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+target_link_libraries(BlackMagic PRIVATE BlackMagicAssets)
 
 target_compile_definitions(BlackMagic PUBLIC
     JUCE_WEB_BROWSER=0

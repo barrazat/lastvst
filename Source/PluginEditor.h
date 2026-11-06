@@ -16,23 +16,34 @@ public:
 private:
     void timerCallback() override;
     void openMenu (const juce::String& paramId, const juce::StringArray& items, juce::Component& target);
-    juce::Rectangle<int> getLcdBounds() const { return { 28, 100, getWidth() - 56, 128 }; }
+    void drawStatic (juce::Graphics&) const;     // todo lo fijo, en coordenadas de la imagen de referencia
+    void ensureBackground();
+    juce::Rectangle<int> r (float x, float y, float w, float h) const;
 
     BlackMagicAudioProcessor& proc;
     bm::BMLookAndFeel laf;
 
+    float scale = 1.0f;
+    juce::Image background, logo;
+
     juce::Slider retuneSlider, throatSlider, trackingSlider, humanizeSlider;
     using SliderAtt = juce::AudioProcessorValueTreeState::SliderAttachment;
+    using ButtonAtt = juce::AudioProcessorValueTreeState::ButtonAttachment;
     std::unique_ptr<SliderAtt> retuneAtt, throatAtt, trackingAtt, humanizeAtt;
+    std::unique_ptr<ButtonAtt> throatOnAtt;
 
-    bm::LcdField inputField { "INPUT" }, keyField { "KEY" }, scaleField { "SCALE" };
+    bm::PillToggle throatToggle;
+    bm::DropField  inputField, keyField, scaleField;
+    bm::LcdDisplay lcd;
 
     juce::StringArray inputNames { "Low Male", "Alto/Tenor", "Female" };
     juce::StringArray keyNames   { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
     juce::StringArray scaleNames { "Chromatic", "Major", "Minor", "Harmonic Minor", "Pentatonic Major", "Pentatonic Minor" };
 
-    // LCD: nota de salida promediada (no cambia de golpe)
-    int shownNote = -1, candidateNote = -1, candidateTicks = 0;
+    int   shownNote = -1, candidateNote = -1, candidateTicks = 0;
+    float meter = 0.0f;
+    bool  throatDim = true;
+    juce::String latencyText;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BlackMagicAudioProcessorEditor)
 };

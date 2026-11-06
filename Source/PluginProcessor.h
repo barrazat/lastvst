@@ -36,7 +36,9 @@ public:
     juce::AudioProcessorValueTreeState apvts;
 
     // Nota de salida actual (MIDI) o -1 si no hay voz. La lee la interfaz (LCD).
-    std::atomic<int> displayTarget { -1 };
+    std::atomic<int>   displayTarget { -1 };
+    // Desviacion de la voz respecto a la nota objetivo en cents (-50..+50): la usa el medidor TUNING.
+    std::atomic<float> displayCents  { 0.0f };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -48,6 +50,7 @@ private:
     std::atomic<float>* scaleP     = nullptr;
     std::atomic<float>* inputTypeP = nullptr;
     std::atomic<float>* throatP    = nullptr;
+    std::atomic<float>* throatOnP  = nullptr;
     std::atomic<float>* trackingP  = nullptr;
     std::atomic<float>* humanizeP  = nullptr;
 

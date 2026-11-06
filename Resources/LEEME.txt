@@ -1,8 +1,8 @@
-FUENTES OPCIONALES (no las puedo incluir por licencia)
+RECURSOS
 
- - title_font.ttf : pon aqui UnifrakturCook (el titulo "Black Magic").
- - ui_font.ttf    : pon aqui Helvetica Neue Display Bold (si tienes la licencia).
-                    Si tu archivo es .otf, renombralo a ui_font.ttf; se carga igual.
-
-Si no existen, el plugin usa una fuente gotica / Helvetica Neue / Arial del sistema.
-Al subir el proyecto a GitHub, el workflow las incrusta solo si estan en esta carpeta.
+ - dungeon_logo.png : logo Dungeon (ya incluido).
+ - Fuentes: copia aqui tus archivos .otf o .ttf y se incrustan solos al compilar. No importa el nombre exacto:
+     * si el nombre contiene "unifraktur"                  -> titulo "BLACK MAGIC"
+     * si contiene "bold" / "-bd" / "heavy" / "black"       -> texto Helvetica en negrita
+     * cualquier otra                                       -> texto Helvetica normal
+   Sin fuentes se usan las del sistema (el titulo cambia de aspecto).

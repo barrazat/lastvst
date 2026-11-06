@@ -24,6 +24,7 @@ struct EngineParams
     int   scale     = 0;      // 0 chromatic, 1 major, 2 minor, 3 harm. minor, 4 pent. major, 5 pent. minor
     int   inputType = 1;      // 0 low male, 1 alto/tenor, 2 female
     float throat    = 50.0f;  // 0..100  (50 = neutro)
+    bool  throatOn  = false;  // si esta apagado, los formantes no se tocan
     float tracking  = 50.0f;  // 0..100
     float humanize  = 0.0f;   // 0..100
 };
@@ -91,6 +92,8 @@ public:
     int  getLatency()   const noexcept { return latency; }
     int  getInputType() const noexcept { return currentType; }
     int  getTargetNote() const noexcept { return targetNoteOut.load (std::memory_order_relaxed); }
+    // desviacion de la voz de entrada respecto a la nota objetivo, en cents (-50..+50)
+    float getCents()     const noexcept { return centsOut.load (std::memory_order_relaxed); }
 
     //==========================================================================
     // Procesa en el sitio. channels[c][n]
@@ -317,15 +320,17 @@ private:
 
             curT    = tinSmooth;
             curTout = std::clamp (curT / std::pow (2.0, sOut / 12.0), 8.0, tMaxSamples * 2.0);
-            curPhi  = std::pow (2.0, (std::clamp ((double) params.throat, 0.0, 100.0) - 50.0) / 50.0 * 0.25);
+            curPhi  = params.throatOn ? std::pow (2.0, (std::clamp ((double) params.throat, 0.0, 100.0) - 50.0) / 50.0 * 0.25) : 1.0;
             curH    = curT / curPhi;
             targetNoteOut.store (targetNote, std::memory_order_relaxed);
+            centsOut.store ((float) std::clamp ((midiIn - (double) targetNote) * 100.0, -50.0, 50.0), std::memory_order_relaxed);
         }
         else
         {
             targetNote = -1; sOut = 0.0; heldTime = 0.0;
             curT = curTout = curH = unvoicedT; curPhi = 1.0;
             targetNoteOut.store (-1, std::memory_order_relaxed);
+            centsOut.store (0.0f, std::memory_order_relaxed);
         }
     }
 
@@ -497,6 +502,7 @@ private:
     int    holdCount = 0, jumpCount = 0;
     double jumpPeriod = 0.0, tinSmooth = 264.0, sOut = 0.0, heldTime = 0.0;
     int    targetNote = -1;
-    std::atomic<int> targetNoteOut { -1 };
+    std::atomic<int>   targetNoteOut { -1 };
+    std::atomic<float> centsOut { 0.0f };
 };
 } // namespace bm

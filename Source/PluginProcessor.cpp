@@ -12,6 +12,7 @@ BlackMagicAudioProcessor::BlackMagicAudioProcessor()
     scaleP     = apvts.getRawParameterValue ("scale");
     inputTypeP = apvts.getRawParameterValue ("inputType");
     throatP    = apvts.getRawParameterValue ("throat");
+    throatOnP  = apvts.getRawParameterValue ("throatOn");
     trackingP  = apvts.getRawParameterValue ("tracking");
     humanizeP  = apvts.getRawParameterValue ("humanize");
 }
@@ -32,6 +33,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout BlackMagicAudioProcessor::cr
     knob ("retune",   "Retune Speed", 0.0f);     // 0 = el mas robotico
     knob ("throat",   "Throat",       50.0f);    // 50 = neutro
     knob ("tracking", "Tracking",     50.0f);
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "throatOn", 1 }, "Throat On", false));
     knob ("humanize", "Humanize",     0.0f);
 
     layout.add (std::make_unique<AudioParameterChoice> (
@@ -77,6 +79,7 @@ void BlackMagicAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     p.scale     = (int) std::lround (scaleP->load());
     p.inputType = (int) std::lround (inputTypeP->load());
     p.throat    = throatP->load();
+    p.throatOn  = throatOnP->load() > 0.5f;
     p.tracking  = trackingP->load();
     p.humanize  = humanizeP->load();
 
@@ -90,6 +93,7 @@ void BlackMagicAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     engine.process (buffer.getArrayOfWritePointers(), numCh, buffer.getNumSamples(), p);
     displayTarget.store (engine.getTargetNote(), std::memory_order_relaxed);
+    displayCents.store  (engine.getCents(),      std::memory_order_relaxed);
 }
 
 juce::AudioProcessorEditor* BlackMagicAudioProcessor::createEditor()
