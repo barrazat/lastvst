@@ -39,6 +39,7 @@ public:
     std::atomic<int>   displayTarget { -1 };
     // Desviacion de la voz respecto a la nota objetivo en cents (-50..+50): la usa el medidor TUNING.
     std::atomic<float> displayCents  { 0.0f };
+    std::atomic<float> displayHz     { 0.0f };   // frecuencia de la voz de entrada
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();

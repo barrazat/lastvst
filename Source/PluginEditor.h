@@ -40,10 +40,9 @@ private:
     juce::StringArray keyNames   { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
     juce::StringArray scaleNames { "Chromatic", "Major", "Minor", "Harmonic Minor", "Pentatonic Major", "Pentatonic Minor" };
 
-    int   shownNote = -1, candidateNote = -1, candidateTicks = 0;
-    float meter = 0.0f;
+    bm::LcdDisplay::State lcdState;
+    float smoothCents = 0.0f, smoothHz = 0.0f;
     bool  throatDim = true;
-    juce::String latencyText;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BlackMagicAudioProcessorEditor)
 };

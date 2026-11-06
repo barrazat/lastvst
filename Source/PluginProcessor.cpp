@@ -94,6 +94,7 @@ void BlackMagicAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     engine.process (buffer.getArrayOfWritePointers(), numCh, buffer.getNumSamples(), p);
     displayTarget.store (engine.getTargetNote(), std::memory_order_relaxed);
     displayCents.store  (engine.getCents(),      std::memory_order_relaxed);
+    displayHz.store     (engine.getInputHz(),    std::memory_order_relaxed);
 }
 
 juce::AudioProcessorEditor* BlackMagicAudioProcessor::createEditor()

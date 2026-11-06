@@ -14,7 +14,7 @@ el más robótico posible: la voz salta de inmediato a la nota exacta de la esca
 | **Key** (LCD) | C, C#, D … B |
 | **Scale** (LCD) | Chromatic, Major, Minor, Harmonic Minor, Pentatonic Major, Pentatonic Minor |
 
-El LCD muestra **TUNING** (cuánto desafina tu voz respecto a la nota: FLAT ← 0 → SHARP) y **NOTE** (la nota de salida, promediada para que no parpadee), ambos con glow. Haz click en INPUT TYPE / KEY / SCALE para abrir las opciones. La ventana se puede redimensionar.
+La pantalla LCD tiene un anillo de **tuning** que se llena desde el centro hacia donde desafinas (hielo cuando estás afinado, rojo cuando estás lejos), con la **nota de salida** al centro (promediada en ~100 ms y con fade al cortar la voz). A los lados: **cents** de desviación y **Hz** de tu voz. Todo con glow. Haz click en INPUT TYPE / KEY / SCALE para abrir las opciones. La ventana se puede redimensionar.
 
 Para el sonido T-Pain / robot: Retune 0, Scale Chromatic (o la tonalidad de tu canción), Tracking 50, Humanize 0.
 
@@ -27,6 +27,6 @@ Para el sonido T-Pain / robot: Retune 0, Scale Chromatic (o la tonalidad de tu c
 Fuentes: copia tus archivos `.otf`/`.ttf` (UnifrakturCook y Helvetica) a la carpeta `Resources/` y se incrustan solos (ver `Resources/LEEME.txt`). El logo Dungeon ya va incluido.
 
 ## Notas técnicas
-- Latencia: se informa a FL Studio (compensación automática). ~15 ms Female, ~27 ms Alto/Tenor, ~37 ms Low Male a 48 kHz.
+- Latencia: se informa a FL Studio (compensación automática, no se muestra en el plugin). ~15 ms Female, ~27 ms Alto/Tenor, ~37 ms Low Male a 48 kHz.
 - Detección YIN + cambio de tono TD-PSOLA (preserva formantes), lectura con interpolación sinc de 32 puntos: no recorta agudos. Sin pitch, el audio pasa idéntico bit a bit (solo retrasado).
 - JUCE se descarga solo (versión fijada en `CMakeLists.txt`, línea `GIT_TAG`). JUCE es AGPL/comercial: si vas a vender el plugin revisa su licencia.

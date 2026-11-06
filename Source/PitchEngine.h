@@ -86,7 +86,11 @@ public:
         voiced = false; holdCount = 0; jumpCount = 0; jumpPeriod = 0.0;
         tinSmooth = unvoicedT; targetNote = -1; sOut = 0.0; heldTime = 0.0; needSnap = true;
         curT = curTout = curH = unvoicedT; curPhi = 1.0;
+        for (auto& v : voteRing) v = -1;
+        votePos = 0;
         targetNoteOut.store (-1);
+        centsOut.store (0.0f);
+        hzOut.store (0.0f);
     }
 
     int  getLatency()   const noexcept { return latency; }
@@ -94,6 +98,8 @@ public:
     int  getTargetNote() const noexcept { return targetNoteOut.load (std::memory_order_relaxed); }
     // desviacion de la voz de entrada respecto a la nota objetivo, en cents (-50..+50)
     float getCents()     const noexcept { return centsOut.load (std::memory_order_relaxed); }
+    // frecuencia detectada de la voz de entrada (Hz), 0 si no hay voz
+    float getInputHz()   const noexcept { return hzOut.load (std::memory_order_relaxed); }
 
     //==========================================================================
     // Procesa en el sitio. channels[c][n]
@@ -155,6 +161,7 @@ private:
     static constexpr int    kTaps    = 32;
     static constexpr int    kPhases  = 512;
     static constexpr int    kMaxTau  = 1024;
+    static constexpr int    kVotes   = 36;
     static constexpr double kPhiMin  = 0.8408964152537145;   // 2^(-3/12)
 
     static constexpr int kScaleMasks[6] = { 0xFFF, 0xAB5, 0x5AD, 0x9AD, 0x295, 0x4A9 };
@@ -226,6 +233,23 @@ private:
         }
         periodFull = refined * (double) decim;
         return true;
+    }
+
+    // Nota mostrada = la que mas veces salio en los ultimos ~100 ms (kVotes saltos de analisis)
+    void pushVote (int n) { voteRing[votePos] = n; votePos = (votePos + 1) % kVotes; }
+
+    int modeNote() const
+    {
+        int best = -1, bestCount = 0;
+        for (int i = 0; i < kVotes; ++i)
+        {
+            const int n = voteRing[i];
+            if (n < 0) continue;
+            int c = 0;
+            for (int j = 0; j < kVotes; ++j) if (voteRing[j] == n) ++c;
+            if (c > bestCount) { bestCount = c; best = n; }
+        }
+        return bestCount >= 6 ? best : -1;
     }
 
     bool isAllowed (int note) const
@@ -322,14 +346,18 @@ private:
             curTout = std::clamp (curT / std::pow (2.0, sOut / 12.0), 8.0, tMaxSamples * 2.0);
             curPhi  = params.throatOn ? std::pow (2.0, (std::clamp ((double) params.throat, 0.0, 100.0) - 50.0) / 50.0 * 0.25) : 1.0;
             curH    = curT / curPhi;
-            targetNoteOut.store (targetNote, std::memory_order_relaxed);
+            pushVote (targetNote);
+            targetNoteOut.store (modeNote(), std::memory_order_relaxed);
+            hzOut.store ((float) f0, std::memory_order_relaxed);
             centsOut.store ((float) std::clamp ((midiIn - (double) targetNote) * 100.0, -50.0, 50.0), std::memory_order_relaxed);
         }
         else
         {
             targetNote = -1; sOut = 0.0; heldTime = 0.0;
             curT = curTout = curH = unvoicedT; curPhi = 1.0;
-            targetNoteOut.store (-1, std::memory_order_relaxed);
+            pushVote (-1);
+            targetNoteOut.store (modeNote(), std::memory_order_relaxed);
+            hzOut.store (0.0f, std::memory_order_relaxed);
             centsOut.store (0.0f, std::memory_order_relaxed);
         }
     }
@@ -504,5 +532,8 @@ private:
     int    targetNote = -1;
     std::atomic<int>   targetNoteOut { -1 };
     std::atomic<float> centsOut { 0.0f };
+    std::atomic<float> hzOut    { 0.0f };
+    int voteRing[kVotes] = {};
+    int votePos = 0;
 };
 } // namespace bm

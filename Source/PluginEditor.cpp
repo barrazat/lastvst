@@ -96,23 +96,37 @@ void BlackMagicAudioProcessorEditor::timerCallback()
     keyField.setText   (keyNames  [juce::jlimit (0, keyNames.size()   - 1, idx ("key"))]);
     scaleField.setText (scaleNames[juce::jlimit (0, scaleNames.size() - 1, idx ("scale"))]);
 
-    // nota de salida: solo cambia si la nueva se mantiene un rato (promedio visual)
-    const int cand = proc.displayTarget.load (std::memory_order_relaxed);
-    if (cand == shownNote)          { candidateTicks = 0; candidateNote = cand; }
-    else if (cand == candidateNote) { ++candidateTicks; }
-    else                            { candidateNote = cand; candidateTicks = 0; }
+    // ---- pantalla LCD ----
+    // La nota ya viene promediada desde el motor (la mas frecuente en ~100 ms).
+    const int   cand  = proc.displayTarget.load (std::memory_order_relaxed);
+    const float cents = proc.displayCents.load (std::memory_order_relaxed);
+    const float hz    = proc.displayHz.load (std::memory_order_relaxed);
 
-    const int needed = (candidateNote < 0) ? 9 : 5;
-    if (candidateNote != shownNote && candidateTicks >= needed)
+    if (cand >= 0)
     {
-        shownNote = candidateNote;
-        candidateTicks = 0;
+        if (cand != lcdState.note)                   // cambio de nota: cruce suave
+        {
+            lcdState.prevNote = lcdState.note;
+            lcdState.note = cand;
+            lcdState.blend = 0.0f;
+        }
+        lcdState.activity = juce::jmin (1.0f, lcdState.activity + 0.5f);
+        smoothCents += (std::fabs (cents) > std::fabs (smoothCents) ? 0.45f : 0.25f) * (cents - smoothCents);   // sube rapido, baja mas lento
+        smoothHz    += 0.2f * (hz - smoothHz);
+        if (smoothHz < 1.0f) smoothHz = hz;
     }
+    else
+    {
+        lcdState.activity = juce::jmax (0.0f, lcdState.activity - 0.085f);   // se apaga en ~0.4 s
+        smoothCents *= 0.85f;
+    }
+    lcdState.blend = juce::jmin (1.0f, lcdState.blend + 0.3f);
+    if (lcdState.blend >= 1.0f) lcdState.prevNote = -1;
+    if (lcdState.activity <= 0.0f) { lcdState.note = -1; lcdState.prevNote = -1; smoothHz = 0.0f; }
 
-    // medidor TUNING
-    const float target = shownNote >= 0 ? juce::jlimit (-1.0f, 1.0f, proc.displayCents.load (std::memory_order_relaxed) / 50.0f) : 0.0f;
-    meter += 0.4f * (target - meter);
-    lcd.setState (shownNote, meter);
+    lcdState.cents = smoothCents;
+    lcdState.hz    = smoothHz;
+    lcd.setState (lcdState);
 
     // Throat apagado => perilla atenuada y sin marcas encendidas
     const bool dim = ! throatToggle.getToggleState();
@@ -121,15 +135,6 @@ void BlackMagicAudioProcessorEditor::timerCallback()
         throatDim = dim;
         throatSlider.getProperties().set ("dim", dim);
         throatSlider.repaint();
-    }
-
-    // latencia real que informa el plugin
-    const double sr = proc.getSampleRate();
-    const juce::String t = sr > 0.0 ? juce::String (1000.0 * proc.getLatencySamples() / sr, 1) + " ms" : juce::String ("-- ms");
-    if (t != latencyText)
-    {
-        latencyText = t;
-        repaint (r (770.0f, 425.0f, 180.0f, 26.0f));
     }
 }
 
@@ -215,7 +220,7 @@ void BlackMagicAudioProcessorEditor::drawStatic (juce::Graphics& g) const
             const float sc = juce::jmin (242.0f / bb.getWidth(), 40.0f / bb.getHeight());
             p.applyTransform (juce::AffineTransform::translation (-bb.getCentreX(), -bb.getCentreY())
                                   .scaled (sc).translated (839.0f, 36.0f));
-            drawGlowPath (g, p, colours::red, colours::redGlow, 6.0f, 1.2f);
+            drawGlowPath (g, p, colours::red, colours::redGlow, 5.5f, 0.85f);
         }
     }
     g.setFont (fonts::tracked (11.5f, 0.17f));
@@ -248,18 +253,21 @@ void BlackMagicAudioProcessorEditor::drawStatic (juce::Graphics& g) const
     g.drawText ("INPUT TYPE", juce::Rectangle<float> (75.0f, 107.0f, 200.0f, 16.0f),  juce::Justification::centredLeft, false);
     g.drawText ("KEY",        juce::Rectangle<float> (283.0f, 107.0f, 200.0f, 16.0f), juce::Justification::centredLeft, false);
     g.drawText ("SCALE",      juce::Rectangle<float> (490.0f, 107.0f, 200.0f, 16.0f), juce::Justification::centredLeft, false);
-    g.drawText ("TUNING",     juce::Rectangle<float> (78.0f, 179.0f, 200.0f, 16.0f),  juce::Justification::centredLeft, false);
-    g.drawText ("NOTE",       juce::Rectangle<float> (441.0f, 179.0f, 200.0f, 16.0f), juce::Justification::centredLeft, false);
-    g.drawText ("FLAT",       juce::Rectangle<float> (76.0f, 260.0f, 80.0f, 16.0f),   juce::Justification::centredLeft, false);
-    g.drawText ("0",          juce::Rectangle<float> (207.0f, 260.0f, 60.0f, 16.0f),  juce::Justification::centred, false);
-    g.drawText ("SHARP",      juce::Rectangle<float> (317.0f, 260.0f, 80.0f, 16.0f),  juce::Justification::centredRight, false);
 
-    g.setColour (juce::Colour (0xff5a5a5f));
-    for (int i : { 8, 22 })
-        g.fillRect (78.0f + (float) i * 10.4f + 3.0f, 257.5f, 1.0f, 4.0f);
+    // columnas de la pantalla: TUNING (cents) | anillo + nota | INPUT (Hz)
+    g.drawText ("TUNING", juce::Rectangle<float> (78.0f, 179.0f, 150.0f, 16.0f),  juce::Justification::centredLeft, false);
+    g.drawText ("INPUT",  juce::Rectangle<float> (526.0f, 179.0f, 150.0f, 16.0f), juce::Justification::centredLeft, false);
+    g.setFont (fonts::tracked (11.0f, 0.12f));
+    g.drawText ("CENTS", juce::Rectangle<float> (92.0f, 272.0f, 120.0f, 14.0f),  juce::Justification::centred, false);
+    g.drawText ("Hz",    juce::Rectangle<float> (546.0f, 272.0f, 120.0f, 14.0f), juce::Justification::centred, false);
+    // marcas del anillo
+    g.drawText ("0",     juce::Rectangle<float> (349.0f, 175.0f, 60.0f, 14.0f),  juce::Justification::centred, false);
+    g.drawText ("FLAT",  juce::Rectangle<float> (300.0f, 282.0f, 60.0f, 14.0f),  juce::Justification::centredRight, false);
+    g.drawText ("SHARP", juce::Rectangle<float> (398.0f, 282.0f, 60.0f, 14.0f),  juce::Justification::centredLeft, false);
 
     g.setColour (juce::Colour (0xff2a2a2e));
-    g.fillRect (411.0f, 185.0f, 1.2f, 100.0f);
+    g.fillRect (250.0f, 185.0f, 1.2f, 100.0f);
+    g.fillRect (508.0f, 185.0f, 1.2f, 100.0f);
 
     // ---- nombres de las perillas ----
     g.setFont (fonts::tracked (17.0f, 0.05f));
@@ -316,14 +324,6 @@ void BlackMagicAudioProcessorEditor::paint (juce::Graphics& g)
     ensureBackground();
     g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
     g.drawImage (background, getLocalBounds().toFloat());
-
-    // lectura de latencia (en el lugar donde estaba el boton LOW LATENCY, que se omitio)
-    g.addTransform (juce::AffineTransform::scale (scale));
-    g.setFont (bm::fonts::tracked (12.5f, 0.10f));
-    g.setColour (bm::colours::grey);
-    g.drawText ("LATENCY", juce::Rectangle<float> (770.0f, 429.0f, 90.0f, 16.0f), juce::Justification::centredRight, false);
-    g.setColour (bm::colours::white);
-    g.drawText (latencyText, juce::Rectangle<float> (868.0f, 429.0f, 90.0f, 16.0f), juce::Justification::centredLeft, false);
 }
 
 void BlackMagicAudioProcessorEditor::resized()

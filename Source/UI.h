@@ -211,7 +211,7 @@ public:
 
         // indicador
         const float angle = startAngle + pos * (endAngle - startAngle);
-        const juce::Line<float> needle (pt (faceR * 0.12f, angle), pt (faceR * 0.88f, angle));
+        const juce::Line<float> needle (pt (faceR * 0.22f, angle), pt (faceR * 0.88f, angle));
         if (! dim)
         {
             g.setColour (colours::tickLit.withAlpha (0.12f));
@@ -220,17 +220,25 @@ public:
         g.setColour (juce::Colour (dim ? 0xffb9b9bd : 0xfff6f8ff));
         g.drawLine (needle, 2.5f * R / 70.0f);
 
-        g.setColour (juce::Colour (0xff0c0c0e));
-        g.fillEllipse (c.x - 3.6f * R / 70.0f, c.y - 3.6f * R / 70.0f, 7.2f * R / 70.0f, 7.2f * R / 70.0f);
     }
 };
 
 //==============================================================================
-// Medidor de afinacion + nota (el "LCD"). Dibuja en coordenadas ref con glow.
+// "Pantalla" del LCD: anillo de tuning con la nota al centro + lecturas de cents y Hz.
+// Todo con glow. Dibuja en coordenadas ref.
 class LcdDisplay : public juce::Component
 {
 public:
     static constexpr float refX = 62.0f, refY = 178.0f, refW = 636.0f, refH = 118.0f;
+
+    struct State
+    {
+        int   note = -1, prevNote = -1;   // nota MIDI actual / anterior (para el cruce suave)
+        float blend = 1.0f;               // 0..1  cruce prevNote -> note
+        float activity = 0.0f;            // 0..1  brillo general (se apaga con fade al cortar la voz)
+        float cents = 0.0f;               // desviacion de la voz respecto a la nota
+        float hz = 0.0f;                  // frecuencia de la voz
+    };
 
     LcdDisplay()
     {
@@ -240,104 +248,148 @@ public:
 
     void setScale (float s) { scale = s; }
 
-    // note: MIDI o -1; meter: -1 (plano) .. +1 (sostenido)
-    void setState (int newNote, float newMeter)
+    void setState (const State& s)
     {
-        const bool changed = (newNote != note) || std::fabs (newMeter - meter) > 0.004f;
-        note = newNote;
-        meter = newMeter;
-        if (changed) repaint();
+        const bool changed = s.note != st.note || s.prevNote != st.prevNote
+                          || std::fabs (s.blend - st.blend) > 0.01f
+                          || std::fabs (s.activity - st.activity) > 0.01f
+                          || std::fabs (s.cents - st.cents) > 0.05f
+                          || std::fabs (s.hz - st.hz) > 0.05f;
+        if (changed) { st = s; repaint(); }
     }
 
     void paint (juce::Graphics& g) override
     {
         g.addTransform (juce::AffineTransform::translation (-refX, -refY).scaled (scale));
-        drawMeter (g);
-        drawNote (g);
+        drawGauge (g);
+        drawReadouts (g);
     }
 
 private:
-    static constexpr int kSeg = 31;
+    static constexpr int   kSeg = 25;                      // 12 a cada lado + 1 central
+    static constexpr float gx = 379.0f, gy = 243.0f;       // centro del anillo (ref)
+    static constexpr float gR = 52.0f, gr = 33.0f;         // radio exterior / interior
+    static constexpr float kRangeCents = 30.0f;            // el anillo cubre +-30 cents
 
-    static juce::Colour segColour (int i)
+    // hielo cuando estas afinado -> carmesi cuando estas lejos
+    static juce::Colour tuneColour (float absCents)
     {
-        const int d = std::abs (i - kSeg / 2);
-        if (d <= 3)  return juce::Colour (0xff3df06a);
-        if (d <= 6)  return juce::Colour (0xff9be03c);
-        if (d <= 9)  return juce::Colour (0xffe6c43a);
-        if (d <= 12) return juce::Colour (0xfff0862b);
-        return juce::Colour (0xfff0393a);
-    }
-
-    void drawMeter (juce::Graphics& g) const
-    {
-        const float x0 = 78.0f, pitch = 10.4f, w = 7.0f, y0 = 198.0f, h = 60.0f;
-        const float pos = (float) (kSeg / 2) + juce::jlimit (-1.0f, 1.0f, meter) * (float) (kSeg / 2);
-
-        for (int i = 0; i < kSeg; ++i)
-        {
-            const juce::Rectangle<float> r (x0 + (float) i * pitch, y0, w, h);
-            const auto col = segColour (i);
-
-            float lit = (note >= 0) ? juce::jlimit (0.0f, 1.0f, 1.0f - std::fabs ((float) i - pos) * 0.62f) : 0.0f;
-            if (i == kSeg / 2) lit = juce::jmax (lit, 0.10f);
-
-            if (lit > 0.02f)
-            {
-                drawGlowRect (g, r, col.brighter (0.15f).withAlpha (0.30f + 0.70f * lit), col, 5.0f, lit);
-            }
-            else
-            {
-                g.setColour (col.withAlpha (0.15f));
-                g.fillRoundedRectangle (r, 1.8f);
-            }
-        }
+        const float t = juce::jlimit (0.0f, 1.0f, (absCents - 3.0f) / 16.0f);
+        return juce::Colour (0xffdbeaff).interpolatedWith (juce::Colour (0xffff3340), t);
     }
 
     static void drawDash (juce::Graphics& g, float cx, float cy)
     {
-        auto hex = [] (float cx_, float cy_, float hw, float hh)
-        {
-            juce::Path p;
-            p.startNewSubPath (cx_ - hw, cy_);
-            p.lineTo (cx_ - hw * 0.68f, cy_ - hh);
-            p.lineTo (cx_ + hw * 0.68f, cy_ - hh);
-            p.lineTo (cx_ + hw, cy_);
-            p.lineTo (cx_ + hw * 0.68f, cy_ + hh);
-            p.lineTo (cx_ - hw * 0.68f, cy_ + hh);
-            p.closeSubPath();
-            return p.createPathWithRoundedCorners (4.0f);
-        };
-        drawGlowPath (g, hex (cx, cy, 23.0f, 12.0f), juce::Colour (0xff5c5f68), juce::Colour (0xff9aa0b0), 7.0f, 0.9f);
-        drawGlowPath (g, hex (cx, cy, 13.0f, 4.6f), juce::Colour (0xffc9ccd4), juce::Colour (0xffffffff), 4.0f, 0.8f);
+        juce::Path p;
+        const float hw = 17.0f, hh = 8.0f;
+        p.startNewSubPath (cx - hw, cy);
+        p.lineTo (cx - hw * 0.68f, cy - hh);
+        p.lineTo (cx + hw * 0.68f, cy - hh);
+        p.lineTo (cx + hw, cy);
+        p.lineTo (cx + hw * 0.68f, cy + hh);
+        p.lineTo (cx - hw * 0.68f, cy + hh);
+        p.closeSubPath();
+        drawGlowPath (g, p.createPathWithRoundedCorners (3.5f), juce::Colour (0xff4b4e57), juce::Colour (0xff9aa0b0), 6.0f, 1.2f);
     }
 
-    void drawNote (juce::Graphics& g) const
+    void drawNoteGlyph (juce::Graphics& g, int note, float alpha, juce::Colour c) const
     {
-        if (note < 0)
-        {
-            drawDash (g, 528.0f, 240.0f);
-            drawDash (g, 586.0f, 240.0f);
-            return;
-        }
+        if (note < 0 || alpha < 0.02f) return;
 
         static const char* letters[12] = { "C", "C", "D", "D", "E", "F", "F", "G", "G", "A", "A", "B" };
         static const bool  sharps[12]  = { false, true, false, true, false, false, true, false, true, false, true, false };
         const int pc = note % 12;
+        const auto core = c.brighter (0.15f).withAlpha (alpha);
 
-        const auto big = fonts::ui (80.0f);
-        drawGlowPath (g, textPath (letters[pc], big, { 486.0f, 196.0f, 64.0f, 88.0f }, juce::Justification::centred),
-                      colours::noteCore, colours::noteHalo, 8.0f);
+        drawGlowPath (g, textPath (letters[pc], fonts::ui (46.0f), { gx - 30.0f, gy - 30.0f, 48.0f, 60.0f },
+                                   juce::Justification::centred), core, c, 6.0f, 2.0f * alpha);
         if (sharps[pc])
-            drawGlowPath (g, textPath ("#", fonts::ui (36.0f), { 546.0f, 196.0f, 24.0f, 40.0f }, juce::Justification::centred),
-                          colours::noteCore, colours::noteHalo, 6.0f);
-        drawGlowPath (g, textPath (juce::String (note / 12 - 1), big, { 566.0f, 196.0f, 56.0f, 88.0f }, juce::Justification::centred),
-                      colours::noteCore, colours::noteHalo, 8.0f);
+            drawGlowPath (g, textPath ("#", fonts::ui (22.0f), { gx + 8.0f, gy - 28.0f, 18.0f, 24.0f },
+                                       juce::Justification::centred), core, c, 4.0f, 1.8f * alpha);
+        drawGlowPath (g, textPath (juce::String (note / 12 - 1), fonts::ui (16.0f), { gx + 8.0f, gy + 5.0f, 18.0f, 20.0f },
+                                   juce::Justification::centred), core.withAlpha (alpha * 0.85f), c, 3.0f, 1.4f * alpha);
+    }
+
+    void drawGauge (juce::Graphics& g) const
+    {
+        const float act  = st.activity;
+        const float v    = juce::jlimit (-12.0f, 12.0f, st.cents / (kRangeCents / 12.0f));
+        const float mag  = std::fabs (v);
+        const float start = -0.75f * juce::MathConstants<float>::pi;
+        const float seg   = 1.5f * juce::MathConstants<float>::pi / (float) kSeg;
+        const float gap   = 0.034f;
+        const auto  tc    = tuneColour (std::fabs (st.cents));
+
+        // disco central oscuro con halo del color actual
+        const float dr = gr - 3.0f;
+        g.setColour (juce::Colour (0xff040405));
+        g.fillEllipse (gx - dr, gy - dr, dr * 2.0f, dr * 2.0f);
+        if (act > 0.02f)
+        {
+            g.setGradientFill (juce::ColourGradient (tc.withAlpha (0.32f * act), gx, gy,
+                                                     tc.withAlpha (0.0f), gx + dr, gy, true));
+            g.fillEllipse (gx - dr, gy - dr, dr * 2.0f, dr * 2.0f);
+        }
+
+        // segmentos: se llenan desde el centro hacia el lado donde desafinas
+        for (int i = 0; i < kSeg; ++i)
+        {
+            const int k = i - kSeg / 2;
+            float lit = 0.0f;
+            if (k == 0)                         lit = juce::jlimit (0.3f, 1.0f, 1.5f - mag);
+            else if ((k > 0) == (v > 0.0f))     lit = juce::jlimit (0.0f, 1.0f, mag - ((float) std::abs (k) - 0.5f));
+            lit *= act;
+
+            juce::Path p;
+            p.addPieSegment (gx - gR, gy - gR, gR * 2.0f, gR * 2.0f,
+                             start + (float) i * seg + gap, start + (float) (i + 1) * seg - gap, gr / gR);
+
+            if (lit > 0.03f)
+            {
+                const auto c = tuneColour ((float) std::abs (k) * (kRangeCents / 12.0f));
+                drawGlowPath (g, p, c.withMultipliedBrightness (0.35f + 0.65f * lit), c, 5.0f, 2.0f * lit);
+            }
+            else
+            {
+                g.setColour (juce::Colour (0xff1e1f23));
+                g.fillPath (p);
+                g.setColour (juce::Colour (0xff2e2f34));
+                g.strokePath (p, juce::PathStrokeType (0.8f));
+            }
+        }
+
+        // nota al centro (cruce suave entre la anterior y la nueva)
+        if (st.note < 0 && st.prevNote < 0)
+        {
+            drawDash (g, gx, gy);
+            return;
+        }
+        if (st.prevNote >= 0 && st.blend < 1.0f)
+            drawNoteGlyph (g, st.prevNote, (1.0f - st.blend) * act, tc);
+        drawNoteGlyph (g, st.note, st.blend * act, tc);
+        if (act < 0.02f) drawDash (g, gx, gy);
+    }
+
+    void drawReadouts (juce::Graphics& g) const
+    {
+        const bool  on  = st.activity > 0.02f && st.note >= 0;
+        const float act = st.activity;
+        const auto  tc  = tuneColour (std::fabs (st.cents));
+
+        auto readout = [&] (const juce::String& text, float cx, float h, juce::Colour c)
+        {
+            const auto path = textPath (text, fonts::ui (h), { cx - 76.0f, gy - 30.0f, 152.0f, 60.0f }, juce::Justification::centred);
+            if (on) drawGlowPath (g, path, c.brighter (0.1f).withAlpha (act), c, 6.0f, 2.0f * act);
+            else  { g.setColour (juce::Colour (0xff35363b)); g.fillPath (path); }
+        };
+
+        const int rc = juce::roundToInt (st.cents);
+        readout (on ? juce::String (rc > 0 ? "+" : "") + juce::String (rc) : juce::String ("--"), 152.0f, 40.0f, tc);
+        readout (on ? juce::String (st.hz, 1) : juce::String ("--"), 606.0f, 34.0f, juce::Colour (0xffdbeaff));
     }
 
     float scale = 1.0f;
-    int   note  = -1;
-    float meter = 0.0f;
+    State st;
 };
 
 //==============================================================================
