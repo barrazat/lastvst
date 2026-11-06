@@ -137,7 +137,7 @@ void BlackMagicAudioProcessorEditor::timerCallback()
 void BlackMagicAudioProcessorEditor::drawStatic (juce::Graphics& g) const
 {
     using namespace bm;
-    g.setImageResampling (juce::Graphics::highResamplingQuality);
+    g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
 
     // ---- fondo metalico oscuro con cepillado ----
     g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1a1a1c), 0.0f, 0.0f,
@@ -314,7 +314,7 @@ void BlackMagicAudioProcessorEditor::ensureBackground()
 void BlackMagicAudioProcessorEditor::paint (juce::Graphics& g)
 {
     ensureBackground();
-    g.setImageResampling (juce::Graphics::highResamplingQuality);
+    g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
     g.drawImage (background, getLocalBounds().toFloat());
 
     // lectura de latencia (en el lugar donde estaba el boton LOW LATENCY, que se omitio)
