@@ -14,7 +14,7 @@ el más robótico posible: la voz salta de inmediato a la nota exacta de la esca
 | **Key** (LCD) | C, C#, D … B |
 | **Scale** (LCD) | Chromatic, Major, Minor, Harmonic Minor, Pentatonic Major, Pentatonic Minor |
 
-La pantalla LCD tiene un anillo de **tuning** que se llena desde el centro hacia donde desafinas (hielo cuando estás afinado, rojo cuando estás lejos), con la **nota de salida** al centro (promediada en ~100 ms y con fade al cortar la voz). A los lados: **cents** de desviación y **Hz** de tu voz. Todo con glow. Haz click en INPUT TYPE / KEY / SCALE para abrir las opciones. La ventana se puede redimensionar.
+La pantalla LCD tiene un anillo de **tuning** que se llena desde el centro hacia donde desafinas (lavanda brillante cuando estás afinado, violeta cuando estás lejos; ±4 cents cuentan como afinado) y la **nota de salida** al centro, promediada en ~300 ms y con fade al cortar la voz. Todo con glow. Haz click en INPUT TYPE / KEY / SCALE para abrir las opciones. La ventana se puede redimensionar. Al cargar el plugin la escala por defecto es **Minor**.
 
 Para el sonido T-Pain / robot: Retune 0, Scale Chromatic (o la tonalidad de tu canción), Tracking 50, Humanize 0.
 
@@ -24,7 +24,7 @@ Para el sonido T-Pain / robot: Retune 0, Scale Chromatic (o la tonalidad de tu c
 3. Al terminar, descarga el artefacto **BlackMagic-VST3-Windows**: dentro está `Black Magic.vst3`.
 4. Copia esa carpeta `Black Magic.vst3` a `C:\Program Files\Common Files\VST3\` y en FL Studio haz *Options → Manage plugins → Find installed plugins*.
 
-Fuentes: copia tus archivos `.otf`/`.ttf` (UnifrakturCook y Helvetica) a la carpeta `Resources/` y se incrustan solos (ver `Resources/LEEME.txt`). El logo Dungeon ya va incluido.
+Fuentes: copia tus archivos `.otf`/`.ttf` (UnifrakturCook, Helvetica y Helvetica Medium) a la carpeta `Resources/` y se incrustan solos (ver `Resources/LEEME.txt`). Helvetica Medium se detecta si el nombre del archivo contiene "Medium". El logo Dungeon ya va incluido.
 
 ## Notas técnicas
 - Latencia: se informa a FL Studio (compensación automática, no se muestra en el plugin). ~15 ms Female, ~27 ms Alto/Tenor, ~37 ms Low Male a 48 kHz.

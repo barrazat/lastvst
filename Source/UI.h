@@ -10,14 +10,12 @@ namespace bm
 {
 namespace colours
 {
-    const juce::Colour red      (0xffb32d31);
-    const juce::Colour redGlow  (0xffff3b3b);
+    const juce::Colour violet   (0xff722db3);   // color de marca: titulo, glow, anillo
+    const juce::Colour lavender (0xffeadfff);   // "encendido" claro (afinado)
     const juce::Colour grey     (0xff96969b);
     const juce::Colour greyDark (0xff68686c);
     const juce::Colour white    (0xffeef0f4);
-    const juce::Colour tickLit  (0xffdcebff);
-    const juce::Colour noteCore (0xfff1f5ff);
-    const juce::Colour noteHalo (0xff8fb8ff);
+    const juce::Colour tickLit  (0xffe4d6ff);
 }
 
 //==============================================================================
@@ -30,7 +28,7 @@ namespace fonts
 {
     struct Bank
     {
-        juce::Typeface::Ptr title, bold, regular;
+        juce::Typeface::Ptr title, bold, medium, regular;
 
         Bank()
         {
@@ -50,6 +48,8 @@ namespace fonts
 
                 if (lower.contains ("unifraktur"))
                     title = tf;
+                else if (lower.contains ("medium") || lower.contains ("-md") || lower.contains ("_md"))
+                { if (medium == nullptr) medium = tf; }
                 else if (lower.contains ("bold") || lower.contains ("-bd") || lower.contains ("heavy") || lower.contains ("black"))
                 { if (bold == nullptr) bold = tf; }
                 else
@@ -57,6 +57,7 @@ namespace fonts
             }
             if (bold == nullptr)    bold = regular;
             if (regular == nullptr) regular = bold;
+            if (medium == nullptr)  medium = regular;
         }
     };
 
@@ -69,6 +70,15 @@ namespace fonts
         if (tf != nullptr)
             return juce::Font (juce::FontOptions (tf).withHeight (height));
         return juce::Font (juce::FontOptions ("Helvetica Neue", height, bold ? juce::Font::bold : juce::Font::plain));
+    }
+
+    // Helvetica Medium (para los items seleccionables)
+    inline juce::Font medium (float height)
+    {
+        auto& b = bank();
+        if (b.medium != nullptr)
+            return juce::Font (juce::FontOptions (b.medium).withHeight (height));
+        return juce::Font (juce::FontOptions ("Helvetica Neue", height, juce::Font::plain));
     }
 
     inline juce::Font title (float height)
@@ -134,11 +144,11 @@ public:
     {
         setColour (juce::PopupMenu::backgroundColourId,            juce::Colour (0xff131315));
         setColour (juce::PopupMenu::textColourId,                  colours::white);
-        setColour (juce::PopupMenu::highlightedBackgroundColourId, juce::Colour (0xff3a3a40));
+        setColour (juce::PopupMenu::highlightedBackgroundColourId, juce::Colour (0xff3a2a55));
         setColour (juce::PopupMenu::highlightedTextColourId,       juce::Colours::white);
     }
 
-    juce::Font getPopupMenuFont() override { return fonts::ui (16.0f); }
+    juce::Font getPopupMenuFont() override { return fonts::medium (16.0f); }
 
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height, float pos,
                            float startAngle, float endAngle, juce::Slider& slider) override
@@ -217,14 +227,14 @@ public:
             g.setColour (colours::tickLit.withAlpha (0.12f));
             g.drawLine (needle, 6.0f * R / 70.0f);
         }
-        g.setColour (juce::Colour (dim ? 0xffb9b9bd : 0xfff6f8ff));
+        g.setColour (juce::Colour (dim ? 0xffb9b9bd : 0xfff4eeff));
         g.drawLine (needle, 2.5f * R / 70.0f);
 
     }
 };
 
 //==============================================================================
-// "Pantalla" del LCD: anillo de tuning con la nota al centro + lecturas de cents y Hz.
+// "Pantalla" del LCD: anillo de tuning con la nota al centro.
 // Todo con glow. Dibuja en coordenadas ref.
 class LcdDisplay : public juce::Component
 {
@@ -236,8 +246,7 @@ public:
         int   note = -1, prevNote = -1;   // nota MIDI actual / anterior (para el cruce suave)
         float blend = 1.0f;               // 0..1  cruce prevNote -> note
         float activity = 0.0f;            // 0..1  brillo general (se apaga con fade al cortar la voz)
-        float cents = 0.0f;               // desviacion de la voz respecto a la nota
-        float hz = 0.0f;                  // frecuencia de la voz
+        float cents = 0.0f;               // desviacion de la voz respecto a la nota (ya suavizada, con zona muerta)
     };
 
     LcdDisplay()
@@ -253,8 +262,7 @@ public:
         const bool changed = s.note != st.note || s.prevNote != st.prevNote
                           || std::fabs (s.blend - st.blend) > 0.01f
                           || std::fabs (s.activity - st.activity) > 0.01f
-                          || std::fabs (s.cents - st.cents) > 0.05f
-                          || std::fabs (s.hz - st.hz) > 0.05f;
+                          || std::fabs (s.cents - st.cents) > 0.05f;
         if (changed) { st = s; repaint(); }
     }
 
@@ -262,7 +270,6 @@ public:
     {
         g.addTransform (juce::AffineTransform::translation (-refX, -refY).scaled (scale));
         drawGauge (g);
-        drawReadouts (g);
     }
 
 private:
@@ -271,11 +278,11 @@ private:
     static constexpr float gR = 52.0f, gr = 33.0f;         // radio exterior / interior
     static constexpr float kRangeCents = 30.0f;            // el anillo cubre +-30 cents
 
-    // hielo cuando estas afinado -> carmesi cuando estas lejos
+    // lavanda brillante cuando estas afinado -> violeta de marca cuando estas lejos
     static juce::Colour tuneColour (float absCents)
     {
-        const float t = juce::jlimit (0.0f, 1.0f, (absCents - 3.0f) / 16.0f);
-        return juce::Colour (0xffdbeaff).interpolatedWith (juce::Colour (0xffff3340), t);
+        const float t = juce::jlimit (0.0f, 1.0f, absCents / 16.0f);
+        return colours::lavender.interpolatedWith (colours::violet, t);
     }
 
     static void drawDash (juce::Graphics& g, float cx, float cy)
@@ -299,7 +306,7 @@ private:
         static const char* letters[12] = { "C", "C", "D", "D", "E", "F", "F", "G", "G", "A", "A", "B" };
         static const bool  sharps[12]  = { false, true, false, true, false, false, true, false, true, false, true, false };
         const int pc = note % 12;
-        const auto core = c.brighter (0.15f).withAlpha (alpha);
+        const auto core = c.interpolatedWith (colours::lavender, 0.45f).withAlpha (alpha);   // siempre legible
 
         drawGlowPath (g, textPath (letters[pc], fonts::ui (46.0f), { gx - 30.0f, gy - 30.0f, 48.0f, 60.0f },
                                    juce::Justification::centred), core, c, 6.0f, 2.0f * alpha);
@@ -370,24 +377,6 @@ private:
         if (act < 0.02f) drawDash (g, gx, gy);
     }
 
-    void drawReadouts (juce::Graphics& g) const
-    {
-        const bool  on  = st.activity > 0.02f && st.note >= 0;
-        const float act = st.activity;
-        const auto  tc  = tuneColour (std::fabs (st.cents));
-
-        auto readout = [&] (const juce::String& text, float cx, float h, juce::Colour c)
-        {
-            const auto path = textPath (text, fonts::ui (h), { cx - 76.0f, gy - 30.0f, 152.0f, 60.0f }, juce::Justification::centred);
-            if (on) drawGlowPath (g, path, c.brighter (0.1f).withAlpha (act), c, 6.0f, 2.0f * act);
-            else  { g.setColour (juce::Colour (0xff35363b)); g.fillPath (path); }
-        };
-
-        const int rc = juce::roundToInt (st.cents);
-        readout (on ? juce::String (rc > 0 ? "+" : "") + juce::String (rc) : juce::String ("--"), 152.0f, 40.0f, tc);
-        readout (on ? juce::String (st.hz, 1) : juce::String ("--"), 606.0f, 34.0f, juce::Colour (0xffdbeaff));
-    }
-
     float scale = 1.0f;
     State st;
 };
@@ -415,12 +404,12 @@ public:
                                    juce::Colour (hover ? 0xff17171a : 0xff121214), 0.0f, r.getBottom(), false);
         g.setGradientFill (grad);
         g.fillRoundedRectangle (r, h * 0.26f);
-        g.setColour (juce::Colour (hover ? 0xff4a4a52 : 0xff35353b));
+        g.setColour (juce::Colour (hover ? 0xff6a4a99 : 0xff35353b));
         g.drawRoundedRectangle (r, h * 0.26f, 1.2f);
         g.setColour (juce::Colours::white.withAlpha (0.05f));
         g.drawHorizontalLine ((int) r.getY() + 2, r.getX() + h * 0.3f, r.getRight() - h * 0.3f);
 
-        g.setFont (fonts::ui (h * 0.52f));
+        g.setFont (fonts::medium (h * 0.52f));
         g.setColour (colours::white);
         g.drawText (text, getLocalBounds().withTrimmedLeft ((int) (h * 0.48f)).withTrimmedRight ((int) (h * 0.9f)),
                     juce::Justification::centredLeft, true);
@@ -474,7 +463,7 @@ public:
         if (on)
         {
             drawGlowRect (g, juce::Rectangle<float> (lx - lr, ly - lr, lr * 2.0f, lr * 2.0f),
-                          juce::Colour (0xffff5a5a), colours::redGlow, h * 0.28f);
+                          juce::Colour (0xffb98cf5), colours::violet, h * 0.28f);
         }
         else
         {

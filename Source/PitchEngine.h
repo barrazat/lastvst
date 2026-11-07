@@ -87,7 +87,7 @@ public:
         tinSmooth = unvoicedT; targetNote = -1; sOut = 0.0; heldTime = 0.0; needSnap = true;
         curT = curTout = curH = unvoicedT; curPhi = 1.0;
         for (auto& v : voteRing) v = -1;
-        votePos = 0;
+        votePos = 0; stableNote = -1; centsAvg = 0.0;
         targetNoteOut.store (-1);
         centsOut.store (0.0f);
         hzOut.store (0.0f);
@@ -161,7 +161,7 @@ private:
     static constexpr int    kTaps    = 32;
     static constexpr int    kPhases  = 512;
     static constexpr int    kMaxTau  = 1024;
-    static constexpr int    kVotes   = 36;
+    static constexpr int    kVotes   = 110;   // ~300 ms de votos
     static constexpr double kPhiMin  = 0.8408964152537145;   // 2^(-3/12)
 
     static constexpr int kScaleMasks[6] = { 0xFFF, 0xAB5, 0x5AD, 0x9AD, 0x295, 0x4A9 };
@@ -235,21 +235,33 @@ private:
         return true;
     }
 
-    // Nota mostrada = la que mas veces salio en los ultimos ~100 ms (kVotes saltos de analisis)
+    // Nota mostrada = la que mas veces salio en los ultimos ~300 ms (kVotes saltos de analisis).
+    // Una nota nueva solo reemplaza a la actual cuando tiene claramente mas votos (>1.4x):
+    // asi, en glissandos o transiciones, solo se muestra la nota donde "aterrizas".
     void pushVote (int n) { voteRing[votePos] = n; votePos = (votePos + 1) % kVotes; }
 
-    int modeNote() const
+    int modeNote()
     {
+        // sin voz en los ultimos ~55 ms => nada que mostrar (la interfaz hace el fade)
+        bool recentVoice = false;
+        for (int i = 1; i <= 20; ++i)
+            if (voteRing[(votePos - i + kVotes) % kVotes] >= 0) { recentVoice = true; break; }
+        if (! recentVoice) { stableNote = -1; return -1; }
+
+        int counts[128] = {};
         int best = -1, bestCount = 0;
         for (int i = 0; i < kVotes; ++i)
         {
             const int n = voteRing[i];
-            if (n < 0) continue;
-            int c = 0;
-            for (int j = 0; j < kVotes; ++j) if (voteRing[j] == n) ++c;
-            if (c > bestCount) { bestCount = c; best = n; }
+            if (n < 0 || n > 127) continue;
+            if (++counts[n] > bestCount) { bestCount = counts[n]; best = n; }
         }
-        return bestCount >= 6 ? best : -1;
+
+        if (stableNote < 0 || counts[stableNote] == 0)
+            stableNote = (bestCount >= 6) ? best : -1;
+        else if (best != stableNote && (float) bestCount > 1.4f * (float) counts[stableNote])
+            stableNote = best;
+        return stableNote;
     }
 
     bool isAllowed (int note) const
@@ -327,8 +339,13 @@ private:
             const double midiIn = 69.0 + 12.0 * std::log2 (f0 / 440.0);
 
             const int nt = chooseTarget (midiIn, targetNote);
-            if (nt != targetNote) { targetNote = nt; heldTime = 0.0; }
-            else                  heldTime += hopSec;
+            const bool noteChanged = (nt != targetNote);
+            if (noteChanged) { targetNote = nt; heldTime = 0.0; }
+            else             heldTime += hopSec;
+
+            const double instCents = std::clamp ((midiIn - (double) targetNote) * 100.0, -50.0, 50.0);
+            if (noteChanged) centsAvg = instCents;
+            else             centsAvg += (1.0 - std::exp (-hopSec / 0.18)) * (instCents - centsAvg);
 
             const double sDes = std::clamp ((double) targetNote - midiIn, -7.0, 7.0);
 
@@ -349,7 +366,7 @@ private:
             pushVote (targetNote);
             targetNoteOut.store (modeNote(), std::memory_order_relaxed);
             hzOut.store ((float) f0, std::memory_order_relaxed);
-            centsOut.store ((float) std::clamp ((midiIn - (double) targetNote) * 100.0, -50.0, 50.0), std::memory_order_relaxed);
+            centsOut.store ((float) centsAvg, std::memory_order_relaxed);
         }
         else
         {
@@ -359,6 +376,7 @@ private:
             targetNoteOut.store (modeNote(), std::memory_order_relaxed);
             hzOut.store (0.0f, std::memory_order_relaxed);
             centsOut.store (0.0f, std::memory_order_relaxed);
+            centsAvg = 0.0;
         }
     }
 
@@ -534,6 +552,7 @@ private:
     std::atomic<float> centsOut { 0.0f };
     std::atomic<float> hzOut    { 0.0f };
     int voteRing[kVotes] = {};
-    int votePos = 0;
+    int votePos = 0, stableNote = -1;
+    double centsAvg = 0.0;
 };
 } // namespace bm

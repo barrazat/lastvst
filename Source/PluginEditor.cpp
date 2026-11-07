@@ -97,10 +97,9 @@ void BlackMagicAudioProcessorEditor::timerCallback()
     scaleField.setText (scaleNames[juce::jlimit (0, scaleNames.size() - 1, idx ("scale"))]);
 
     // ---- pantalla LCD ----
-    // La nota ya viene promediada desde el motor (la mas frecuente en ~100 ms).
+    // La nota ya viene promediada desde el motor (la mas frecuente en ~300 ms, con estabilidad).
     const int   cand  = proc.displayTarget.load (std::memory_order_relaxed);
     const float cents = proc.displayCents.load (std::memory_order_relaxed);
-    const float hz    = proc.displayHz.load (std::memory_order_relaxed);
 
     if (cand >= 0)
     {
@@ -112,8 +111,6 @@ void BlackMagicAudioProcessorEditor::timerCallback()
         }
         lcdState.activity = juce::jmin (1.0f, lcdState.activity + 0.5f);
         smoothCents += (std::fabs (cents) > std::fabs (smoothCents) ? 0.45f : 0.25f) * (cents - smoothCents);   // sube rapido, baja mas lento
-        smoothHz    += 0.2f * (hz - smoothHz);
-        if (smoothHz < 1.0f) smoothHz = hz;
     }
     else
     {
@@ -122,10 +119,12 @@ void BlackMagicAudioProcessorEditor::timerCallback()
     }
     lcdState.blend = juce::jmin (1.0f, lcdState.blend + 0.3f);
     if (lcdState.blend >= 1.0f) lcdState.prevNote = -1;
-    if (lcdState.activity <= 0.0f) { lcdState.note = -1; lcdState.prevNote = -1; smoothHz = 0.0f; }
+    if (lcdState.activity <= 0.0f) { lcdState.note = -1; lcdState.prevNote = -1; heldCents = 0.0f; smoothCents = 0.0f; }
 
-    lcdState.cents = smoothCents;
-    lcdState.hz    = smoothHz;
+    // el anillo solo se mueve ante cambios claros (histeresis) y +-4 cents cuentan como afinado
+    if (std::fabs (smoothCents - heldCents) > 0.9f) heldCents = smoothCents;
+    const float ringMag = juce::jmax (0.0f, std::fabs (heldCents) - 4.0f);
+    lcdState.cents = heldCents < 0.0f ? -ringMag : ringMag;
     lcd.setState (lcdState);
 
     // Throat apagado => perilla atenuada y sin marcas encendidas
@@ -220,7 +219,7 @@ void BlackMagicAudioProcessorEditor::drawStatic (juce::Graphics& g) const
             const float sc = juce::jmin (242.0f / bb.getWidth(), 40.0f / bb.getHeight());
             p.applyTransform (juce::AffineTransform::translation (-bb.getCentreX(), -bb.getCentreY())
                                   .scaled (sc).translated (839.0f, 36.0f));
-            drawGlowPath (g, p, colours::red, colours::redGlow, 5.5f, 0.85f);
+            drawGlowPath (g, p, colours::violet, colours::violet, 5.5f, 0.85f);
         }
     }
     g.setFont (fonts::tracked (11.5f, 0.17f));
@@ -254,16 +253,19 @@ void BlackMagicAudioProcessorEditor::drawStatic (juce::Graphics& g) const
     g.drawText ("KEY",        juce::Rectangle<float> (283.0f, 107.0f, 200.0f, 16.0f), juce::Justification::centredLeft, false);
     g.drawText ("SCALE",      juce::Rectangle<float> (490.0f, 107.0f, 200.0f, 16.0f), juce::Justification::centredLeft, false);
 
-    // columnas de la pantalla: TUNING (cents) | anillo + nota | INPUT (Hz)
-    g.drawText ("TUNING", juce::Rectangle<float> (78.0f, 179.0f, 150.0f, 16.0f),  juce::Justification::centredLeft, false);
-    g.drawText ("INPUT",  juce::Rectangle<float> (526.0f, 179.0f, 150.0f, 16.0f), juce::Justification::centredLeft, false);
-    g.setFont (fonts::tracked (11.0f, 0.12f));
-    g.drawText ("CENTS", juce::Rectangle<float> (92.0f, 272.0f, 120.0f, 14.0f),  juce::Justification::centred, false);
-    g.drawText ("Hz",    juce::Rectangle<float> (546.0f, 272.0f, 120.0f, 14.0f), juce::Justification::centred, false);
-    // marcas del anillo
-    g.drawText ("0",     juce::Rectangle<float> (349.0f, 175.0f, 60.0f, 14.0f),  juce::Justification::centred, false);
-    g.drawText ("FLAT",  juce::Rectangle<float> (300.0f, 282.0f, 60.0f, 14.0f),  juce::Justification::centredRight, false);
-    g.drawText ("SHARP", juce::Rectangle<float> (398.0f, 282.0f, 60.0f, 14.0f),  juce::Justification::centredLeft, false);
+    // ambiente de pantalla en la zona inferior: lineas de escaneo muy suaves + resplandor violeta tenue
+    {
+        juce::Graphics::ScopedSaveState ss (g);
+        juce::Path clip;
+        clip.addRoundedRectangle (panel.reduced (1.5f), 13.0f);
+        g.reduceClipRegion (clip);
+        g.setGradientFill (juce::ColourGradient (colours::violet.withAlpha (0.11f), 379.0f, 243.0f,
+                                                 colours::violet.withAlpha (0.0f), 379.0f + 190.0f, 243.0f, true));
+        g.fillRect (56.0f, 175.0f, 646.0f, 127.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.022f));
+        for (float y = 176.0f; y < 302.0f; y += 3.0f)
+            g.fillRect (56.0f, y, 646.0f, 1.0f);
+    }
 
     g.setColour (juce::Colour (0xff2a2a2e));
     g.fillRect (250.0f, 185.0f, 1.2f, 100.0f);

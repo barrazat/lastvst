@@ -42,7 +42,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout BlackMagicAudioProcessor::cr
 
     layout.add (std::make_unique<AudioParameterChoice> (
         ParameterID { "scale", 1 }, "Scale",
-        StringArray { "Chromatic", "Major", "Minor", "Harmonic Minor", "Pentatonic Major", "Pentatonic Minor" }, 0));
+        StringArray { "Chromatic", "Major", "Minor", "Harmonic Minor", "Pentatonic Major", "Pentatonic Minor" }, 2));   // por defecto: Minor
 
     layout.add (std::make_unique<AudioParameterChoice> (
         ParameterID { "inputType", 1 }, "Input Type",

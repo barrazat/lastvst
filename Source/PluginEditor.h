@@ -41,7 +41,7 @@ private:
     juce::StringArray scaleNames { "Chromatic", "Major", "Minor", "Harmonic Minor", "Pentatonic Major", "Pentatonic Minor" };
 
     bm::LcdDisplay::State lcdState;
-    float smoothCents = 0.0f, smoothHz = 0.0f;
+    float smoothCents = 0.0f, heldCents = 0.0f;
     bool  throatDim = true;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BlackMagicAudioProcessorEditor)
